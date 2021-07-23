@@ -3,7 +3,8 @@
   "references": [
     { "path": "app" },
     { "path": "contracts" },
-    { "path": "types" }
+    { "path": "types" },
+    { "path": "dcurve" }
   ],
   "exclude": ["node_modules"]
 }

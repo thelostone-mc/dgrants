@@ -121,6 +121,21 @@
         </template>
       </InputRow>
 
+      <!-- Grant logo -->
+      <InputRow>
+        <template v-slot:label>Logo:</template>
+        <BaseImageUpload
+          v-model="form.logo"
+          label="Grant logo"
+          id="grant-logo"
+          :rules="isValidLogo"
+          errorMsg="Please upload a valid Grant logo"
+          :required="false"
+          @updateLogo="updateLogo"
+        />
+        </template>
+      </InputRow>
+
       <!-- Submit button -->
       <div class="px-4 md:px-12 py-12">
         <button
@@ -143,14 +158,30 @@ import { computed, defineComponent, ref } from 'vue';
 import BaseHeader from 'src/components/BaseHeader.vue';
 import InputRow from 'src/components/InputRow.vue';
 import BaseInput from 'src/components/BaseInput.vue';
+import BaseImageUpload from 'src/components/BaseImageUpload.vue';
 import BaseTextarea from 'src/components/BaseTextarea.vue';
 import TransactionStatus from 'src/components/TransactionStatus.vue';
 // --- Store ---
 import useDataStore from 'src/store/data';
 import useWalletStore from 'src/store/wallet';
 // --- Methods and Data ---
+<<<<<<< HEAD
 import { LOREM_IPSOM_TEXT } from 'src/utils/constants';
 import { isValidAddress, isValidWebsite, isValidGithub, isValidTwitter, isDefined, pushRoute, urlFromTwitterHandle } from 'src/utils/utils'; // prettier-ignore
+=======
+import { GRANT_REGISTRY_ADDRESS, GRANT_REGISTRY_ABI, LOREM_IPSOM_TEXT } from 'src/utils/constants';
+import { Contract } from 'src/utils/ethers';
+import {
+  isValidAddress,
+  isValidWebsite,
+  isValidGithub,
+  isValidTwitter,
+  isValidLogo,
+  isDefined,
+  pushRoute,
+  urlFromTwitterHandle,
+} from 'src/utils/utils';
+>>>>>>> d5258cd (logo upload + metadata update)
 import * as ipfs from 'src/utils/ipfs';
 
 function useNewGrant() {
@@ -169,6 +200,7 @@ function useNewGrant() {
     website: string;
     github: string;
     twitter: string;
+    logo: File | undefined;
   }>({
     owner: '',
     payee: '',
@@ -177,30 +209,42 @@ function useNewGrant() {
     website: '',
     github: '',
     twitter: '',
+    logo: undefined,
   });
   const isFormValid = computed(
-    () =>
+    async () =>
       isValidAddress(form.value.owner) &&
       isValidAddress(form.value.payee) &&
       isDefined(form.value.name) &&
       isDefined(form.value.description) &&
       isValidWebsite(form.value.website) &&
       isValidGithub(form.value.github) &&
-      isValidTwitter(form.value.twitter)
+      isValidTwitter(form.value.twitter) &&
+      (await isValidLogo(form.value.logo))
   );
+
+  async function updateLogo(logo: File | undefined) {
+    form.value.logo = logo && (await isValidLogo(logo)) ? logo : undefined;
+  }
 
   /**
    * @notice Creates a new grant, parses logs for the Grant ID, and navigates to that grant's page
    */
   async function createGrant() {
     // Send transaction
-    const { owner, payee, name, description, website, github, twitter } = form.value;
+    const { owner, payee, name, description, website, github, twitter, logo } = form.value;
+    const logoURI = logo ? await ipfs.uploadFile(logo).then((cid) => ipfs.getMetaPtr({ cid: cid.toString() })) : '';
     const twitterURI = twitter === '' ? twitter : urlFromTwitterHandle(twitter);
     const properties = { websiteURI: website, githubURI: github, twitterURI };
     if (!signer.value) throw new Error('Please connect a wallet');
     const metaPtr = await ipfs
-      .uploadGrantMetadata({ name, description, properties })
+      .uploadGrantMetadata({ name, description, logoURI, properties })
       .then((cid) => ipfs.getMetaPtr({ cid: cid.toString() }));
+<<<<<<< HEAD
+=======
+    console.log(metaPtr);
+    const registry = <GrantRegistry>new Contract(GRANT_REGISTRY_ADDRESS, GRANT_REGISTRY_ABI, signer.value);
+>>>>>>> d5258cd (logo upload + metadata update)
 
     const tx = await grantRegistry.value.createGrant(owner, payee, metaPtr);
     txHash.value = tx.hash;
@@ -217,11 +261,13 @@ function useNewGrant() {
   }
 
   return {
+    updateLogo,
     createGrant,
     isValidAddress,
     isValidWebsite,
     isValidGithub,
     isValidTwitter,
+    isValidLogo,
     isFormValid,
     isDefined,
     form,
@@ -234,7 +280,14 @@ function useNewGrant() {
 
 export default defineComponent({
   name: 'GrantRegistryNewGrant',
-  components: { InputRow, BaseInput, BaseTextarea, TransactionStatus, BaseHeader },
+  components: { 
+    BaseHeader
+    BaseInput,
+    BaseImageUpload,
+    BaseTextarea,
+    InputRow,
+    TransactionStatus,
+  },
   setup() {
     return { ...useNewGrant() };
   },

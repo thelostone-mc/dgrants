@@ -130,9 +130,9 @@
             width="w-full"
             id="grant-logo"
             :rules="isValidLogo"
-            errorMsg="Please upload a valid Grant logo"
+            errorMsg="Logo must be under 200 kB with dimensions of 1920x1080"
             :required="false"
-            @updateLogo="updateLogo"
+            @update:modelValue="updateLogo"
           />
         </template>
       </InputRow>
@@ -212,8 +212,10 @@ function useNewGrant() {
     twitter: '',
     logo: undefined,
   });
-  const isFormValid = computed(
-    async () =>
+
+  const isLogoValid = ref(true);
+  const isFormValid = computed(() => {
+    return (
       isValidAddress(form.value.owner) &&
       isValidAddress(form.value.payee) &&
       isDefined(form.value.name) &&
@@ -221,11 +223,13 @@ function useNewGrant() {
       isValidWebsite(form.value.website) &&
       isValidGithub(form.value.github) &&
       isValidTwitter(form.value.twitter) &&
-      (await isValidLogo(form.value.logo))
-  );
+      isLogoValid.value
+    );
+  });
 
   async function updateLogo(logo: File | undefined) {
-    form.value.logo = logo && (await isValidLogo(logo)) ? logo : undefined;
+    isLogoValid.value = await isValidLogo(logo);
+    form.value.logo = logo && isLogoValid.value ? logo : undefined;
   }
 
   /**
@@ -270,6 +274,7 @@ function useNewGrant() {
     isValidTwitter,
     isValidLogo,
     isFormValid,
+    isLogoValid,
     isDefined,
     form,
     LOREM_IPSOM_TEXT,

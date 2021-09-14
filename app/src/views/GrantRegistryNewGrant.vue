@@ -124,15 +124,16 @@
       <!-- Grant logo -->
       <InputRow>
         <template v-slot:label>Logo:</template>
-        <BaseImageUpload
-          v-model="form.logo"
-          label="Grant logo"
-          id="grant-logo"
-          :rules="isValidLogo"
-          errorMsg="Please upload a valid Grant logo"
-          :required="false"
-          @updateLogo="updateLogo"
-        />
+        <template v-slot:input>
+          <BaseImageUpload
+            v-model="form.logo"
+            width="w-full"
+            id="grant-logo"
+            :rules="isValidLogo"
+            errorMsg="Please upload a valid Grant logo"
+            :required="false"
+            @updateLogo="updateLogo"
+          />
         </template>
       </InputRow>
 
@@ -280,8 +281,8 @@ function useNewGrant() {
 
 export default defineComponent({
   name: 'GrantRegistryNewGrant',
-  components: { 
-    BaseHeader
+  components: {
+    BaseHeader,
     BaseInput,
     BaseImageUpload,
     BaseTextarea,

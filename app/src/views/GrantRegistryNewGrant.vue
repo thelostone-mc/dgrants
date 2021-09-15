@@ -166,23 +166,8 @@ import TransactionStatus from 'src/components/TransactionStatus.vue';
 import useDataStore from 'src/store/data';
 import useWalletStore from 'src/store/wallet';
 // --- Methods and Data ---
-<<<<<<< HEAD
 import { LOREM_IPSOM_TEXT } from 'src/utils/constants';
-import { isValidAddress, isValidWebsite, isValidGithub, isValidTwitter, isDefined, pushRoute, urlFromTwitterHandle } from 'src/utils/utils'; // prettier-ignore
-=======
-import { GRANT_REGISTRY_ADDRESS, GRANT_REGISTRY_ABI, LOREM_IPSOM_TEXT } from 'src/utils/constants';
-import { Contract } from 'src/utils/ethers';
-import {
-  isValidAddress,
-  isValidWebsite,
-  isValidGithub,
-  isValidTwitter,
-  isValidLogo,
-  isDefined,
-  pushRoute,
-  urlFromTwitterHandle,
-} from 'src/utils/utils';
->>>>>>> d5258cd (logo upload + metadata update)
+import { isValidAddress, isValidWebsite, isValidGithub, isValidTwitter, isDefined, pushRoute, urlFromTwitterHandle, isValidLogo } from 'src/utils/utils'; // prettier-ignore
 import * as ipfs from 'src/utils/ipfs';
 
 function useNewGrant() {
@@ -245,11 +230,6 @@ function useNewGrant() {
     const metaPtr = await ipfs
       .uploadGrantMetadata({ name, description, logoURI, properties })
       .then((cid) => ipfs.getMetaPtr({ cid: cid.toString() }));
-<<<<<<< HEAD
-=======
-    console.log(metaPtr);
-    const registry = <GrantRegistry>new Contract(GRANT_REGISTRY_ADDRESS, GRANT_REGISTRY_ABI, signer.value);
->>>>>>> d5258cd (logo upload + metadata update)
 
     const tx = await grantRegistry.value.createGrant(owner, payee, metaPtr);
     txHash.value = tx.hash;

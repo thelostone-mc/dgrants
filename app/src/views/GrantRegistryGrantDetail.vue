@@ -280,7 +280,7 @@ import useWalletStore from 'src/store/wallet';
 import { SUPPORTED_TOKENS_MAPPING } from 'src/utils/chains';
 import { LOREM_IPSOM_TEXT } from 'src/utils/constants';
 import { ContractTransaction, formatUnits } from 'src/utils/ethers';
-import { isValidAddress, isValidWebsite, isValidGithub, isValidTwitter, isDefined, formatNumber, urlFromTwitterHandle, cleanTwitterUrl } from 'src/utils/utils'; // prettier-ignore
+import { isValidAddress, isValidWebsite, isValidGithub, isValidTwitter, isValidLogo, isDefined, formatNumber, urlFromTwitterHandle, cleanTwitterUrl } from 'src/utils/utils'; // prettier-ignore
 import { hexlify } from 'ethers/lib/utils';
 import * as ipfs from 'src/utils/ipfs';
 // --- Types ---

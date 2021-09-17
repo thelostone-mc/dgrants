@@ -77,6 +77,7 @@
                       item.contributionAmount = Number($event);
                       updateCart(item.grantId, item.contributionAmount);
                     "
+                    :min="0"
                     type="number"
                     width="w-1/2"
                     customcss="border-r-0"
@@ -98,8 +99,15 @@
               <div class="col-span-4 lg:col-span-1">
                 <div class="text-grey-400 text-left lg:text-right">
                   <!-- TODO use real match estimates -->
-                  <p v-if="true">not in an active round</p>
-                  <p v-else>USD estimated matching</p>
+                  <p v-if="clrPredictions[item.grantId]">
+                    <span v-for="(clr, index) in clrPredictions[item.grantId]" :key="index">
+                      {{ formatNumber(clr.matching, 2) }} {{ clr.matchingToken.symbol }}
+                      {{ index !== clrPredictions[item.grantId].length - 1 ? '+' : '' }}
+                      <br />
+                      estimated matching
+                    </span>
+                  </p>
+                  <p v-else>not in an active round</p>
                 </div>
               </div>
             </div>
@@ -121,7 +129,7 @@
         </div>
       </div>
 
-      <div class="py-8 border-b border-grey-100">
+      <div class="py-8 border-b border-grey-100" :class="{ hidden: !showEquivalentContributionAmount }">
         <div class="flex gap-x-4 justify-end">
           <span class="text-grey-400">Equivalent to:</span>
           <span>~{{ formatNumber(equivalentContributionAmount, 2) }} DAI</span>
@@ -131,7 +139,13 @@
       <div class="py-8 border-b border-grey-100">
         <div class="flex gap-x-4 justify-end">
           <span class="text-grey-400">Estimated matching value:</span>
-          <span>TODO</span>
+          <span v-if="Object.keys(clrPredictionsByToken).length">
+            <span v-for="(symbol, index) in Object.keys(clrPredictionsByToken)" :key="index">
+              {{ formatNumber(clrPredictionsByToken[symbol], 2) }} {{ symbol }}
+              {{ index !== Object.keys(clrPredictionsByToken).length - 1 ? '+' : '' }}
+            </span>
+          </span>
+          <span v-else> 0.0 DAI </span>
         </div>
       </div>
 
@@ -160,7 +174,7 @@
 
 <script lang="ts">
 // --- External Imports ---
-import { computed, defineComponent, onMounted, ref } from 'vue';
+import { computed, defineComponent, ref, watch } from 'vue';
 import { TwitterIcon, CloseIcon } from '@fusion-icons/vue/interface';
 // --- Component Imports ---
 import BaseHeader from 'src/components/BaseHeader.vue';
@@ -174,23 +188,55 @@ import useDataStore from 'src/store/data';
 // --- Methods and Data ---
 import { SUPPORTED_TOKENS } from 'src/utils/chains';
 import { pushRoute, formatNumber } from 'src/utils/utils';
+import useWalletStore from 'src/store/wallet';
 
 function useCart() {
-  const { cart, cartSummary, cartSummaryString, checkout, clearCart, fetchQuotes, initializeCart, quotes, removeFromCart, updateCart } = useCartStore(); // prettier-ignore
+  const { grantMetadata: meta } = useDataStore();
+  const { cart, lsCart, cartSummary, cartSummaryString, checkout, clearCart, clrPredictions, clrPredictionsByToken, fetchQuotes, initializeCart, quotes, removeFromCart, updateCart, setCart } = useCartStore(); // prettier-ignore
 
-  onMounted(async () => {
-    await fetchQuotes(); // get latest quotes
-    initializeCart(); // make sure cart store is initialized
+  // fetchQuotes whenever network changes
+  const { provider } = useWalletStore();
+  // and on network change
+  watch(
+    () => [provider.value],
+    async () => {
+      try {
+        await fetchQuotes(); // get latest quotes
+      } catch (e) {
+        console.log('Quote update failed');
+      } finally {
+        initializeCart(); // make sure cart store is initialized
+      }
+    },
+    { immediate: true }
+  );
+
+  // force cart update on metadata resolution
+  const grantMetadata = computed(() => {
+    setCart(lsCart.value);
+
+    return meta.value;
   });
+
   const txHash = ref<string>();
   const status = ref<'not started' | 'pending' | 'success' | 'failure'>('pending');
 
+  const showEquivalentContributionAmount = ref<boolean>(false);
+
   const equivalentContributionAmount = computed(() => {
     let sum = 0;
+    let isStableCoin = 0;
     for (const [tokenAddress, amount] of Object.entries(cartSummary.value)) {
       if (!amount) continue;
       const exchangeRate = quotes.value[tokenAddress] ?? 0;
       sum += amount * exchangeRate;
+      isStableCoin += exchangeRate == 1 ? 1 : 0;
+    }
+    // hide when cart is all denominated in a single stablecoin
+    if (sum == 0 || (isStableCoin == 1 && isStableCoin === Object.keys(cartSummary.value).length)) {
+      showEquivalentContributionAmount.value = false;
+    } else {
+      showEquivalentContributionAmount.value = true;
     }
     return sum;
   });
@@ -204,7 +250,7 @@ function useCart() {
     if (success) clearCart();
   }
 
-  return { cart, cartSummaryString, clearCart, completeCheckout, equivalentContributionAmount, executeCheckout, removeFromCart, status, txHash, updateCart }; // prettier-ignore
+  return { cart, lsCart, cartSummaryString, grantMetadata, clearCart, completeCheckout, fetchQuotes, initializeCart, clrPredictions, clrPredictionsByToken, showEquivalentContributionAmount, equivalentContributionAmount, executeCheckout, removeFromCart, setCart, status, txHash, updateCart }; // prettier-ignore
 }
 
 export default defineComponent({
@@ -219,9 +265,8 @@ export default defineComponent({
     LoadingSpinner,
   },
   setup() {
-    const { grantMetadata } = useDataStore();
     const NOT_IMPLEMENTED = (msg: string) => window.alert(`NOT IMPLEMENTED: ${msg}`);
-    return { ...useCart(), pushRoute, grantMetadata, SUPPORTED_TOKENS, NOT_IMPLEMENTED, formatNumber };
+    return { ...useCart(), pushRoute, SUPPORTED_TOKENS, NOT_IMPLEMENTED, formatNumber };
   },
 });
 </script>

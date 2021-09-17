@@ -262,7 +262,7 @@
   </template>
 
   <!-- No grant selected -->
-  <div v-else-if="!grant">
+  <div v-else-if="!loading">
     <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">No grant selected</h2>
   </div>
 
@@ -277,14 +277,14 @@ import useCartStore from 'src/store/cart';
 import useDataStore from 'src/store/data';
 import useWalletStore from 'src/store/wallet';
 // --- Methods and Data ---
-import { SUPPORTED_TOKENS_MAPPING } from 'src/utils/chains';
 import { LOREM_IPSOM_TEXT } from 'src/utils/constants';
-import { ContractTransaction, formatUnits } from 'src/utils/ethers';
+import { ContractTransaction } from 'src/utils/ethers';
 import { isValidAddress, isValidWebsite, isValidGithub, isValidTwitter, isValidLogo, isDefined, formatNumber, urlFromTwitterHandle, cleanTwitterUrl } from 'src/utils/utils'; // prettier-ignore
-import { hexlify } from 'ethers/lib/utils';
-import * as ipfs from 'src/utils/ipfs';
+import * as ipfs from 'src/utils/data/ipfs';
+import { getGrantsGrantRoundDetails } from 'src/utils/data/grantRounds';
+import { filterContributionsByGrantId } from 'src/utils/data/contributions';
 // --- Types ---
-import { Breadcrumb, FilterNavItem, GrantRound, GrantsRoundDetails } from '@dgrants/types';
+import { Breadcrumb, FilterNavItem, GrantsRoundDetails } from '@dgrants/types';
 // --- Components ---
 import BaseInput from 'src/components/BaseInput.vue';
 import BaseImageUpload from 'src/components/BaseImageUpload.vue';
@@ -297,7 +297,6 @@ import ContributionRow from 'src/components/ContributionRow.vue';
 import GrantDetailsRow from 'src/components/GrantDetailsRow.vue';
 import TransactionStatus from 'src/components/TransactionStatus.vue';
 import LoadingSpinner from 'src/components/LoadingSpinner.vue';
-import { CLR, fetch, InitArgs, linear } from '@dgrants/dcurve';
 // --- Icons ---
 import { TwitterIcon } from '@fusion-icons/vue/interface';
 import { Edit3Icon as EditIcon } from '@fusion-icons/vue/interface';
@@ -310,8 +309,10 @@ function useGrantDetail() {
     grantMetadata: metadata,
     grantRounds: rounds,
     grantRoundMetadata: roundsMetadata,
+    grantRoundsCLRData: roundsCLRData,
+    grantContributions: allContributions,
   } = useDataStore();
-  const { signer, provider, userAddress, grantRoundManager, grantRegistry } = useWalletStore();
+  const { signer, provider, userAddress, grantRegistry } = useWalletStore();
   const route = useRoute();
 
   // --- expose grant data ---
@@ -329,106 +330,35 @@ function useGrantDetail() {
   const grantContributions = ref();
   const grantContributionsTotal = ref();
   const grantContributionsByRound = ref();
-
   const txHash = ref<string>();
 
-  // init and assign the calc algorithm to CLR
-  const clr = new CLR({
-    calcAlgo: linear,
-  } as InitArgs);
-
-  // returns the predicition curve for this grant in the given round
-  const getPredictionForGrantInRound = async (clr: CLR, grantId: string, round: GrantRound) => {
-    return await clr.predict({
-      grantId: grantId,
-      predictionPoints: [0, 10, 100],
-      grantRoundContributions: await fetch({
-        provider: provider.value,
-        grantRound: round.address,
-        grantRoundManager: grantRoundManager.value.address,
-        grantRegistry: grantRegistry.value.address,
-        supportedTokens: SUPPORTED_TOKENS_MAPPING,
-        // should these be pulled from an endpoint?
-        ignore: {
-          grants: [],
-          contributionAddress: [],
-        },
-      }),
-    });
-  };
-
-  // gets all contributions to this grant
-  const getContributions = async () => {
-    // all contributions will pass through the roundManager, and the roundManager will ensure theres only one donationToken currency shared between rounds
-    const roundManager = grantRoundManager.value;
-    // get every contribution for this grantId (ignoring the round for now)
-    const contributions = await roundManager.queryFilter(
-      roundManager.filters.GrantDonation(hexlify(grantId.value), null, null, null)
-    );
-
-    // attach the from address (the contributor) to the contribution object
-    return await Promise.all(
-      contributions.reverse().map(async (contribution) => {
-        const tx = await contribution.getTransaction();
-
-        return { ...contribution, from: tx.from, donationToken: rounds.value && rounds.value[0].donationToken };
-      })
-    );
-  };
-
-  // Note: Should this state be cached between calls? How will we manage invalidations?
   watch(
-    () => [grantId.value, rounds.value, roundsMetadata.value, provider.value],
-    async () => {
+    () => [grant.value, grantId.value, rounds.value, roundsMetadata.value, provider.value],
+    () => {
+      // enter loading state between loads
+      loading.value = true;
       // ensure the computed props are ready before fetching data
       if (rounds.value && roundsMetadata.value && provider.value) {
-        // enter loading state between loads
-        loading.value = true;
         // get all contributions for this grant
-        const contributions = await getContributions();
+        const contributions = filterContributionsByGrantId(grantId.value.toString(), allContributions?.value || []);
         // sum all contributions made against this grant
         const contributionsTotal = `${formatNumber(
-          formatUnits(
-            contributions.reduce((carr, contrib) => contrib?.args?.donationAmount.add(carr), 0).toString(),
-            rounds.value && rounds.value[0].donationToken.decimals
-          ),
+          contributions.reduce((total, contribution) => contribution?.amount + total, 0),
           2
         )} ${rounds.value && rounds.value[0].donationToken.symbol}`;
         // collect this grants details from every round that it is a member of (should we use the metadata here?)
-        const contributionsByRound = await Promise.all(
-          (rounds.value || []).map(async (round) => {
-            // this prediciton will refetch all contributions made in this round - should we cache the result of dcurve/fetch?
-            const prediction = await getPredictionForGrantInRound(clr, String(grantId.value), round);
-            // filter only contributions which should be considered for this round (should we also/only check metadata here?)
-            const roundContributions = contributions
-              .map((contrib) => (contrib?.args?.rounds.includes(round.address) ? contrib : false))
-              .filter((c) => c);
-            // sum the contributions which were made against this round
-            const roundsContributionTotal = formatUnits(
-              roundContributions
-                .reduce((carr, contrib) => (contrib ? contrib.args?.donationAmount.add(carr) : carr), 0)
-                .toString(),
-              round.donationToken.decimals
-            );
-
-            return {
-              address: round.address,
-              metaPtr: round.metaPtr,
-              name: roundsMetadata.value[round.metaPtr].name,
-              matchingToken: round.matchingToken,
-              donationToken: round.donationToken,
-              contributions: roundContributions,
-              balance: formatNumber(roundsContributionTotal, 2),
-              matching: formatNumber(prediction.predictions[0].predictedGrantMatch, 2),
-              prediction10: formatNumber(prediction.predictions[1].predictionDiff, 2),
-              prediction100: formatNumber(prediction.predictions[2].predictionDiff, 2),
-            } as GrantsRoundDetails;
-          })
+        const contributionsByRound = getGrantsGrantRoundDetails(
+          grantId.value.toString(),
+          rounds.value,
+          roundsMetadata.value,
+          roundsCLRData.value,
+          contributions
         );
         // save off data
         grantContributions.value = contributions;
         grantContributionsTotal.value = contributionsTotal;
         grantContributionsByRound.value = contributionsByRound;
+
         // finished loading required state
         loading.value = false;
       }

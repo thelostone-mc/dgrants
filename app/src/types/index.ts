@@ -1,6 +1,7 @@
 // App-specific type definition go here
 import { Grant, GrantMetadata } from '@dgrants/types';
 import { TokenInfo } from '@uniswap/token-lists';
+import { BigNumberish } from 'ethers';
 
 // Cart info saved in localStorage
 export type CartItemOptions = {
@@ -17,3 +18,19 @@ export type CartItem =
 
 // type of entities on Etherscan.
 export type EtherscanGroup = 'tx' | 'token' | 'address';
+
+// Cart prediction entries
+export type CartPrediction = { matching: number; matchingToken: TokenInfo };
+export type CartPredictions = {
+  [grantId: string]: CartPrediction[];
+};
+
+// Generic localStorage type to store key->any
+export type LocalStorageAnyObj = {
+  [key: string]: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+};
+export type LocalStorageData = {
+  ts?: BigNumberish;
+  blockNumber?: number;
+  data: LocalStorageAnyObj;
+};

@@ -12,11 +12,12 @@
       :readonly="readonly"
       :disabled="disabled"
       :placeholder="placeholder"
+      :min="type === 'number' && min ? min : undefined"
     />
-  </div>
 
-  <div v-if="!isValid">
-    <div class="bg-pink p-4 text-white" :id="`${id}-error`">{{ errorMsg }}</div>
+    <div v-if="!isValid">
+      <div class="bg-pink p-4 text-white" :id="`${id}-error`">{{ errorMsg }}</div>
+    </div>
   </div>
 </template>
 
@@ -38,6 +39,7 @@ export default defineComponent({
     disabled: { type: Boolean, required: false, default: false }, // is disabled
     width: { type: String, required: false, default: 'w-full' }, // input field width
     customcss: { type: String, required: false, default: '' }, // add custom css stylings
+    min: { type: Number, required: false, default: undefined }, // min if being used as a number input
 
     rules: {
       // Validation rules, as a function that takes one input and returns a bool

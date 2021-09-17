@@ -7,13 +7,15 @@
 // --- Imports ---
 import { computed, ref } from 'vue';
 import { Donation, Grant, SwapSummary } from '@dgrants/types';
-import { CartItem, CartItemOptions } from 'src/types';
+import { CartItem, CartItemOptions, CartPrediction, CartPredictions } from 'src/types';
 import { SupportedChainId, SUPPORTED_TOKENS, SUPPORTED_TOKENS_MAPPING, WETH_ADDRESS } from 'src/utils/chains';
 import { ERC20_ABI, ETH_ADDRESS, WAD } from 'src/utils/constants';
 import { BigNumber, BigNumberish, BytesLike, Contract, ContractTransaction, formatUnits, getAddress, hexDataSlice, isAddress, MaxUint256, parseUnits } from 'src/utils/ethers'; // prettier-ignore
 import { assertSufficientBalance } from 'src/utils/utils';
 import useDataStore from 'src/store/data';
 import useWalletStore from 'src/store/wallet';
+import { getPredictedMatchingForAmount } from '@dgrants/dcurve';
+import { getPredictionsForGrantInRound } from 'src/utils/data/grantRounds';
 
 // --- Constants and helpers ---
 const CART_KEY = 'cart';
@@ -73,7 +75,7 @@ const SWAP_PATHS = {
   },
 };
 
-const { grants, grantRounds } = useDataStore();
+const { grants, grantRounds, grantRoundsCLRData } = useDataStore();
 const { chainId } = useWalletStore();
 const toString = (val: BigNumberish) => BigNumber.from(val).toString();
 const toHex = (val: BigNumberish) => BigNumber.from(val).toHexString();
@@ -112,6 +114,13 @@ export default function useCartStore() {
       console.warn('Could not read any existing cart data from localStorage. Defaulting to empty cart');
       setCart(EMPTY_CART);
     }
+  }
+
+  // convert the (human readable) amount to a different token (direction allows for moving to/from the tokenAddress)
+  function getConvertedAmount(amount: number, tokenAddress: string, direction = 1) {
+    const exchangeRate = quotes.value[tokenAddress] ?? 0;
+
+    return amount * (direction == 1 ? exchangeRate : 1 / exchangeRate);
   }
 
   /**
@@ -347,17 +356,81 @@ export default function useCartStore() {
    */
   const swapPaths = computed(() => SWAP_PATHS[chainId.value]);
 
+  /**
+   * @notice Returns all clr matching for each grant and each round
+   */
+  const clrPredictions = computed<CartPredictions>(() => {
+    const _predictions: CartPredictions = {};
+    cart.value.forEach((item) => {
+      // the original token the contribution was made in
+      const token = item.contributionToken;
+      // collect the matching values for each grant in each round
+      _predictions[item.grantId] = (grantRounds.value || []).map((round) => {
+        // all calculations are denominated in the rounds donationToken
+        const roundToken = round.donationToken;
+        // get the predictions for this grant in this round
+        const clr_predictions = getPredictionsForGrantInRound(item.grantId, grantRoundsCLRData.value[round.address]);
+        // no conversion is required if tokens are in the same currency
+        const contributionIsRoundToken = token.address == roundToken.address;
+        // if contribution/donationToken token is DAI we can skip that step of the conversion
+        const contributionIsDai = token.symbol === 'DAI';
+        const roundTokenIsDai = roundToken.symbol === 'DAI';
+        // take the initial contributionAmount and convert it to be denominated in donationToken
+        let amount = item.contributionAmount;
+        // convert amount to the donationToken (double hop to get into dai then into the donationToken)
+        amount = contributionIsDai || contributionIsRoundToken ? amount : getConvertedAmount(amount, token.address, 1);
+        amount =
+          roundTokenIsDai || contributionIsRoundToken ? amount : getConvertedAmount(amount, roundToken.address, -1);
+
+        const matching = getPredictedMatchingForAmount(
+          clr_predictions,
+          amount // pass in the donationToken denominated amount
+        );
+
+        return {
+          matching: matching,
+          matchingToken: round.matchingToken,
+        };
+      });
+    });
+
+    return _predictions;
+  });
+
+  /**
+   * @notice sum of clrPredictions for grants in the cart (summed by token)
+   */
+  const clrPredictionsByToken = computed<Record<string, number>>(() => {
+    const _predictions = clrPredictions.value;
+    const _predictionTotals: Record<string, number> = {};
+    cart.value.forEach((item) => {
+      if (_predictions[item.grantId]) {
+        _predictions[item.grantId].forEach((prediction: CartPrediction) => {
+          if (!_predictionTotals[prediction.matchingToken.symbol]) {
+            _predictionTotals[prediction.matchingToken.symbol] = 0;
+          }
+          _predictionTotals[prediction.matchingToken.symbol] += prediction.matching;
+        });
+      }
+    });
+
+    return _predictionTotals;
+  });
+
   // Only export additional items as they are needed outside the store
   return {
     // Store
     // WARNING: Be careful -- the `cart` ref is directly exposed so it can be edited by v-model, so just make
     // sure to call `updateCart()` with the appropriate inputs whenever the `cart` ref is modified
     cart,
+    lsCart,
     quotes: computed(() => quotes.value),
     // Getters
     cartItemsCount: computed(() => cart.value.length),
     cartSummary: computed(() => cartSummary.value),
     cartSummaryString: computed(() => cartSummaryString.value),
+    clrPredictions: computed(() => clrPredictions.value),
+    clrPredictionsByToken: computed(() => clrPredictionsByToken.value),
     // Actions / Mutations
     addToCart,
     checkout,
@@ -366,7 +439,9 @@ export default function useCartStore() {
     initializeCart,
     isInCart,
     removeFromCart,
+    setCart,
     updateCart,
+    getConvertedAmount,
   };
 }
 

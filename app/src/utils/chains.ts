@@ -168,7 +168,7 @@ export const ALL_CHAIN_INFO: ChainInfo = {
     grantRoundManagerAbi: GRANT_ROUND_MANAGER_UNI_V2_ABI,
     multicall: '0xd3BB9902C9ae1ECbDB9cCAdbD009F827699185Cb',
     rpcUrl: 'https://polygon-rpc.com/',
-    startBlock: 19437770,
+    startBlock: 19834043,
   },
   [SupportedChainId.RINKEBY]: {
     explorer: 'https://rinkeby.etherscan.io',
